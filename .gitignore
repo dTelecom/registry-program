@@ -1,0 +1,56 @@
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+/dist/
+
+# Go workspace file
+go.work
+
+# Solana specific
+.anchor
+.DS_Store
+target/
+**/*.rs.bk
+test-ledger/
+.yarn/
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Binary output
+solana-registry-client
+registry-client
+
+# Debug files
+debug/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+node_modules/
+
+# Log files
+*.log
+
+# System Files
+.DS_Store
+Thumbs.db
