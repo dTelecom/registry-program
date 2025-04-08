@@ -2,6 +2,8 @@ pub mod account;
 pub mod init_registry;
 pub mod add_to_registry;
 pub mod add_node;
+pub mod delegate_node;
+pub mod undelegate_node;
 pub mod check_registred;
 pub mod remove_from_registry;
 pub mod update_node_online;

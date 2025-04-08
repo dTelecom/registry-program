@@ -7,6 +7,8 @@ use instructions::{
     init_registry::*, 
     add_to_registry::*,
     add_node::*,
+    delegate_node::*,
+    undelegate_node::*,
     check_registred::*,
     remove_from_registry::*,
     update_node_online::*,
@@ -47,6 +49,20 @@ pub mod registry {
         domain: String,
     ) -> Result<()> {
         crate::instructions::add_node::add_node_to_registry(ctx, account_to_add, domain)
+    }
+
+    pub fn delegate_node_account(
+        ctx: Context<DelegateNodeAccount>,
+        account: Pubkey,
+    ) -> Result<()> {
+        crate::instructions::delegate_node::delegate_node_account(ctx, account)
+    }
+
+    pub fn undelegate_node_acount(
+        ctx: Context<UndelegateNodeAccount>,
+        account: Pubkey,
+    ) -> Result<()> {
+        crate::instructions::undelegate_node::undelegate_node_account(ctx, account)
     }
 
     pub fn check_client(

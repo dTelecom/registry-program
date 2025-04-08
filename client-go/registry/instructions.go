@@ -2,31 +2,35 @@ package registry
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"time"
-	"context"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 )
 
 const (
-	ClientEntrySize = 8 + 32 + 32 + 8 + 4 // discriminator + parent + registered + until + limit
-	NodeEntrySize = 8 + 32 + 32 + 4 + 253 + 4 + 1  // discriminator + parent + registered + domain length + domain + online + active
+	ClientEntrySize = 8 + 32 + 32 + 8 + 4           // discriminator + parent + registered + until + limit
+	NodeEntrySize   = 8 + 32 + 32 + 4 + 253 + 4 + 1 // discriminator + parent + registered + domain length + domain + online + active
 )
+
+var delegationProgramID = solana.MustPublicKeyFromBase58("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh")
 
 // Anchor instruction discriminators
 var (
-	InitRegistryDiscriminator = []byte{131, 22, 4, 103, 24, 94, 163, 239}
-	AddClientToRegistryDiscriminator = []byte{198, 64, 62, 101, 62, 204, 69, 108}
-	AddNodeToRegistryDiscriminator = []byte{135, 249, 13, 74, 61, 190, 188, 33}
-	CheckClientDiscriminator = []byte{56, 122, 178, 30, 199, 2, 243, 22}
-	CheckNodeDiscriminator = []byte{62, 101, 38, 142, 134, 79, 122, 116}
+	InitRegistryDiscriminator             = []byte{131, 22, 4, 103, 24, 94, 163, 239}
+	AddClientToRegistryDiscriminator      = []byte{198, 64, 62, 101, 62, 204, 69, 108}
+	AddNodeToRegistryDiscriminator        = []byte{135, 249, 13, 74, 61, 190, 188, 33}
+	CheckClientDiscriminator              = []byte{56, 122, 178, 30, 199, 2, 243, 22}
+	CheckNodeDiscriminator                = []byte{62, 101, 38, 142, 134, 79, 122, 116}
 	RemoveClientFromRegistryDiscriminator = []byte{32, 83, 79, 126, 155, 239, 104, 60}
-	RemoveNodeFromRegistryDiscriminator = []byte{96, 10, 183, 238, 187, 248, 96, 36}
-	UpdateNodeOnlineDiscriminator = []byte{35, 22, 232, 250, 60, 30, 62, 83}
-	UpdateNodeActiveDiscriminator = []byte{121, 150, 132, 175, 172, 145, 197, 132}
+	RemoveNodeFromRegistryDiscriminator   = []byte{96, 10, 183, 238, 187, 248, 96, 36}
+	UpdateNodeOnlineDiscriminator         = []byte{35, 22, 232, 250, 60, 30, 62, 83}
+	UpdateNodeActiveDiscriminator         = []byte{121, 150, 132, 175, 172, 145, 197, 132}
+	DelegateNodeDiscriminator             = []byte{177, 5, 63, 9, 89, 233, 39, 75}
+	UndelegateNodeDiscriminator           = []byte{200, 203, 188, 158, 127, 158, 200, 46}
 )
 
 // findRegistryPDA finds the PDA for a registry with the given name
@@ -306,6 +310,60 @@ func buildUpdateNodeActiveInstruction(
 	), nil
 }
 
+func buildDelegateNodeAccountInstruction(
+	programID solana.PublicKey,
+	authority solana.PublicKey,
+	registry solana.PublicKey,
+	account solana.PublicKey,
+) (solana.Instruction, error) {
+	entryPDA, _, err := findRegistryEntryPDA(programID, account, registry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find entry PDA: %v", err)
+	}
+
+	bufferMessagePubkey, _, _ := solana.FindProgramAddress([][]byte{
+		[]byte("buffer"),
+		entryPDA.Bytes(),
+	}, programID)
+
+	delegationRecordMessagePubkey, _, _ := solana.FindProgramAddress([][]byte{
+		[]byte("delegation"),
+		entryPDA.Bytes(),
+	}, delegationProgramID)
+
+	delegationMetadataMessagePubkey, _, _ := solana.FindProgramAddress([][]byte{
+		[]byte("delegation-metadata"),
+		entryPDA.Bytes(),
+	}, delegationProgramID)
+
+	// Encode the instruction data
+	data := new(bytes.Buffer)
+	// Write instruction discriminator
+	data.Write(DelegateNodeDiscriminator)
+	// Encode account to add
+	data.Write(account.Bytes())
+
+	accounts := solana.AccountMetaSlice{
+		{PublicKey: bufferMessagePubkey, IsWritable: true},             // buffer_message
+		{PublicKey: delegationRecordMessagePubkey, IsWritable: true},   // delegation_record_message
+		{PublicKey: delegationMetadataMessagePubkey, IsWritable: true}, // delegation_metadata_message,
+
+		solana.Meta(entryPDA).WRITE(),
+		solana.Meta(registry),
+		solana.Meta(authority).SIGNER().WRITE(),
+
+		{PublicKey: programID},              // owner_program
+		{PublicKey: delegationProgramID},    // delegation_program
+		{PublicKey: solana.SystemProgramID}, // system_program
+	}
+
+	return solana.NewInstruction(
+		programID,
+		accounts,
+		data.Bytes(),
+	), nil
+}
+
 // getClientEntry retrieves a client entry account data
 func getClientEntry(
 	ctx context.Context,
@@ -382,12 +440,12 @@ func getNodeEntry(
 
 	// Read domain string length (4 bytes)
 	domainLen := binary.LittleEndian.Uint32(data[64:68])
-	
+
 	entry := &NodeEntry{
 		Parent:    solana.PublicKeyFromBytes(data[:32]),
 		Registred: solana.PublicKeyFromBytes(data[32:64]),
-		Domain:    string(data[68:68+domainLen]),
-		Online:    int32(binary.LittleEndian.Uint32(data[68+domainLen:72+domainLen])),
+		Domain:    string(data[68 : 68+domainLen]),
+		Online:    int32(binary.LittleEndian.Uint32(data[68+domainLen : 72+domainLen])),
 		Active:    data[72+domainLen] == 1,
 	}
 

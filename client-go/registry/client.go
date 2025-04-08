@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/programs/system"
 	"github.com/gagliardetto/solana-go/rpc"
 	confirm "github.com/gagliardetto/solana-go/rpc/sendAndConfirmTransaction"
 	"github.com/gagliardetto/solana-go/rpc/ws"
-	"github.com/gagliardetto/solana-go/programs/system"
 )
 
 // RegistryClient represents a client for interacting with the registry program
@@ -199,6 +199,59 @@ func (c *RegistryClient) AddNodeToRegistry(ctx context.Context, registryName str
 	if err != nil {
 		return solana.Signature{}, fmt.Errorf("failed to build instruction: %v", err)
 	}
+
+	// Create the transaction
+	recent, err := c.client.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("failed to get recent blockhash: %v", err)
+	}
+
+	tx, err := solana.NewTransaction(
+		[]solana.Instruction{instruction},
+		recent.Value.Blockhash,
+		solana.TransactionPayer(c.signer.PublicKey()),
+	)
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("failed to create transaction: %v", err)
+	}
+
+	// Sign and send the transaction
+	_, err = tx.Sign(func(key solana.PublicKey) *solana.PrivateKey {
+		if key.Equals(c.signer.PublicKey()) {
+			return &c.signer
+		}
+		return nil
+	})
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("failed to sign transaction: %v", err)
+	}
+
+	sig, err := confirm.SendAndConfirmTransaction(
+		ctx,
+		c.client,
+		c.wsClient,
+		tx,
+	)
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("failed to send and confirm transaction: %v", err)
+	}
+
+	return sig, nil
+}
+
+func (c *RegistryClient) DelegateNode(ctx context.Context, registryName string, account solana.PublicKey) (solana.Signature, error) {
+	// Find the registry PDA
+	registryPDA, _, err := findRegistryPDA(c.programID, c.signer.PublicKey(), registryName)
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("failed to find registry PDA: %v", err)
+	}
+
+	instruction, err := buildDelegateNodeAccountInstruction(
+		c.programID,
+		c.signer.PublicKey(),
+		registryPDA,
+		account,
+	)
 
 	// Create the transaction
 	recent, err := c.client.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
@@ -528,12 +581,12 @@ func (c *RegistryClient) ListNodesInRegistry(ctx context.Context, registryName s
 
 		// Read domain string length (4 bytes)
 		domainLen := binary.LittleEndian.Uint32(data[64:68])
-		
+
 		entry := &NodeEntry{
 			Parent:    solana.PublicKeyFromBytes(data[:32]),
 			Registred: solana.PublicKeyFromBytes(data[32:64]),
-			Domain:    string(data[68:68+domainLen]),
-			Online:    int32(binary.LittleEndian.Uint32(data[68+domainLen:72+domainLen])),
+			Domain:    string(data[68 : 68+domainLen]),
+			Online:    int32(binary.LittleEndian.Uint32(data[68+domainLen : 72+domainLen])),
 			Active:    data[72+domainLen] == 1,
 		}
 		entries = append(entries, entry)
@@ -710,4 +763,4 @@ func (c *RegistryClient) TransferSol(ctx context.Context, to solana.PublicKey, a
 	}
 
 	return sig, nil
-} 
+}

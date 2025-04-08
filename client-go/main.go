@@ -10,6 +10,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/joho/godotenv"
+
 	"solana-registry-client/registry"
 )
 
@@ -83,7 +84,7 @@ func main() {
 			log.Fatalf("Invalid limit: %v", err)
 		}
 		validUntil := time.Now().AddDate(0, 0, validDays)
-		
+
 		sig, err := client.AddClientToRegistry(ctx, registryName, account, validUntil, limit)
 		if err != nil {
 			log.Fatalf("Failed to add client to registry: %v", err)
@@ -103,7 +104,7 @@ func main() {
 		if len(domain) > 64 {
 			log.Fatalf("Domain name must be 64 characters or less")
 		}
-		
+
 		sig, err := client.AddNodeToRegistry(ctx, registryName, account, domain)
 		if err != nil {
 			log.Fatalf("Failed to add node to registry: %v", err)
@@ -281,7 +282,7 @@ func main() {
 		if _, err := fmt.Sscanf(os.Args[5], "%d", &value); err != nil {
 			log.Fatalf("Invalid online value: %v", err)
 		}
-		
+
 		sig, err := client.UpdateNodeOnline(ctx, registryName, authority, account, value)
 		if err != nil {
 			log.Fatalf("Failed to update node online status: %v", err)
@@ -305,7 +306,7 @@ func main() {
 		if _, err := fmt.Sscanf(os.Args[5], "%t", &active); err != nil {
 			log.Fatalf("Invalid active value (must be true/false): %v", err)
 		}
-		
+
 		sig, err := client.UpdateNodeActive(ctx, registryName, authority, account, active)
 		if err != nil {
 			log.Fatalf("Failed to update node active status: %v", err)
@@ -348,7 +349,21 @@ func main() {
 			log.Fatalf("Failed to get new balance: %v", err)
 		}
 		fmt.Printf("New wallet balance: %.9f SOL\n", float64(newBalance)/LAMPORTS_PER_SOL)
+	case "delegate-node":
+		if len(os.Args) != 4 {
+			log.Fatal("Usage: delegate-node <registry_name> <account>")
+		}
+		registryName := os.Args[2]
+		account, err := solana.PublicKeyFromBase58(os.Args[3])
+		if err != nil {
+			log.Fatalf("Invalid account address: %v", err)
+		}
 
+		sig, err := client.DelegateNode(ctx, registryName, account)
+		if err != nil {
+			log.Fatalf("Failed to delegate node: %v", err)
+		}
+		fmt.Printf("Node account delegated. Transaction signature: %s\n", sig)
 	default:
 		printUsage()
 		os.Exit(1)
@@ -360,6 +375,7 @@ func printUsage() {
 	fmt.Println("  create <registry_name>")
 	fmt.Println("  add-client <registry_name> <account_to_add> <valid_days> <limit>")
 	fmt.Println("  add-node <registry_name> <account_to_add> <domain>")
+	fmt.Println("  delegate-node <registry_name> <account_to_add>")
 	fmt.Println("  get-client <registry_name> <account_to_check>")
 	fmt.Println("  get-node <registry_name> <account_to_check>")
 	fmt.Println("  delete-client <registry_name> <account_to_delete>")
@@ -371,4 +387,4 @@ func printUsage() {
 	fmt.Println("  transfer <to_address> <amount_in_sol>")
 	fmt.Println("  balance")
 	fmt.Println("  airdrop [amount_in_sol]")
-} 
+}
